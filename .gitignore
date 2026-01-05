@@ -46,3 +46,9 @@ checkpoints/
 # ================================
 *.env
 .env.local
+
+# ================================
+# Data (keep folder, ignore contents)
+# ================================
+data/*
+!data/.gitkeep
