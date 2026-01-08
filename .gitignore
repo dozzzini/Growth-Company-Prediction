@@ -1,17 +1,53 @@
 # ================================
-# Python
+# Python / Build
 # ================================
 __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
 # ================================
 # Virtual Environment
 # ================================
 venv/
+env/
+ENV/
 .env/
 .venv/
+
+# ================================
+# IDE / Editor (VS Code, PyCharm, etc.)
+# ================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ================================
+# Environment Variables / Secrets
+# ================================
+.env
+.env.local
+*.env
 
 # ================================
 # Jupyter Notebook
@@ -19,30 +55,16 @@ venv/
 .ipynb_checkpoints/
 
 # ================================
-# OS / Editor
+# OS (macOS, Windows)
 # ================================
 .DS_Store
 Thumbs.db
 
-.vscode/
-.idea/
-
 # ================================
-# Logs / Temp
-# ================================
-*.log
-*.tmp
-*.swp
-
-# ================================
-# Data / Model Artifacts
+# Data / Model Artifacts / Logs
 # ================================
 data/
 models/
 checkpoints/
-
-# ================================
-# Secrets
-# ================================
-*.env
-.env.local
+*.log
+*.tmp
