@@ -1,17 +1,13 @@
-# Virtual Environment
-venv/
-env/
-ENV/
-.venv/
-
-# Python
+# ================================
+# Python / Build
+# ================================
 __pycache__/
 *.py[cod]
+*.pyo
+*.pyd
 *$py.class
 *.so
 .Python
-
-# Distribution / packaging
 build/
 develop-eggs/
 dist/
@@ -28,21 +24,47 @@ wheels/
 .installed.cfg
 *.egg
 
-# IDE
+# ================================
+# Virtual Environment
+# ================================
+venv/
+env/
+ENV/
+.env/
+.venv/
+
+# ================================
+# IDE / Editor (VS Code, PyCharm, etc.)
+# ================================
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 
-# Environment variables
+# ================================
+# Environment Variables / Secrets
+# ================================
 .env
 .env.local
+*.env
 
+# ================================
 # Jupyter Notebook
-.ipynb_checkpoints
+# ================================
+.ipynb_checkpoints/
 
-# OS
+# ================================
+# OS (macOS, Windows)
+# ================================
 .DS_Store
 Thumbs.db
 
+# ================================
+# Data / Model Artifacts / Logs
+# ================================
+data/
+models/
+checkpoints/
+*.log
+*.tmp
