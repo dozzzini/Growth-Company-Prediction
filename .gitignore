@@ -66,5 +66,19 @@ Thumbs.db
 data/
 models/
 checkpoints/
+
+# ================================
+# Secrets
+# ================================
+*.env
+.env.local
+
+# ================================
+# Data (keep folder, ignore contents)
+# ================================
+data/*
+!data/.gitkeep
+preprocessed_data/*
+!preprocessed_data/.gitkeep
 *.log
 *.tmp
