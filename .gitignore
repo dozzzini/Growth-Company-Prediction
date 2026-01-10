@@ -38,6 +38,7 @@ Thumbs.db
 # Data / Model Artifacts
 # ================================
 data/
+preprocessed_data/
 models/
 checkpoints/
 
