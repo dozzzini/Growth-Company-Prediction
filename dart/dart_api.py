@@ -266,7 +266,33 @@ class DartCollector:
 
 # --- 실행부 ---
 if __name__ == "__main__":
-    MY_KEY = '010631abcc1fe70395ea2dca6fdfa8ee39bd6a25' # 사용자님의 키
+    # .env 파일에서 API 키 읽기
+    # 프로젝트 루트 디렉토리 찾기 (dart_api.py는 Growth-Company-Prediction/dart/ 폴더에 있음)
+    # 상위 디렉토리로 2단계 올라가면 프로젝트 루트 (sesac_project/)
+    script_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    env_path = os.path.join(script_dir, '.env')
+    MY_KEY = None
+    
+    if os.path.exists(env_path):
+        with open(env_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                # 주석이나 빈 줄 무시
+                if line and not line.startswith('#'):
+                    if '=' in line:
+                        key, value = line.split('=', 1)
+                        key = key.strip()
+                        value = value.strip().strip('"').strip("'")
+                        if key == 'DART_API_KEY':
+                            MY_KEY = value
+                            break
+    
+    if not MY_KEY:
+        print("오류: .env 파일에서 DART_API_KEY를 찾을 수 없습니다.")
+        print(f".env 파일 경로 확인: {env_path}")
+        print(".env 파일에 다음 형식으로 추가해주세요: DART_API_KEY=your_api_key")
+        exit(1)
+    
     CSV_FILE = 'data/특허_기업명리스트.csv'
     
     collector = DartCollector(MY_KEY)
