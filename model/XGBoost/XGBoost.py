@@ -2,13 +2,17 @@ import pandas as pd
 import numpy as np
 import os
 import xgboost as xgb
-from sklearn.model_selection import train_test_split
+from xgboost import XGBClassifier
+from sklearn.model_selection import train_test_split, GridSearchCV, ParameterGrid, cross_val_score
 from sklearn.metrics import (accuracy_score, precision_score, recall_score, 
                             f1_score, roc_auc_score, confusion_matrix, 
                             classification_report, roc_curve, precision_recall_curve)
 import matplotlib.pyplot as plt
 import seaborn as sns
-import optuna
+from tqdm import tqdm
+import mlflow
+import mlflow.sklearn
+from datetime import datetime
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -147,65 +151,180 @@ def prepare_data(df):
     return X, y, feature_cols
 
 
-def optimize_xgboost_hyperparameters(X_train, y_train, X_val, y_val, n_trials=50):
-    """Optuna를 사용한 XGBoost 하이퍼파라미터 최적화"""
-    def objective(trial):
-        # 하이퍼파라미터 탐색 공간 정의
-        params = {
-            'objective': 'binary:logistic',
-            'eval_metric': 'logloss',
-            'booster': 'gbtree',
-            'max_depth': trial.suggest_int('max_depth', 3, 15),
-            'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.3, log=True),
-            'subsample': trial.suggest_float('subsample', 0.5, 1.0),
-            'colsample_bytree': trial.suggest_float('colsample_bytree', 0.5, 1.0),
-            'min_child_weight': trial.suggest_float('min_child_weight', 0.1, 10.0, log=True),
-            'gamma': trial.suggest_float('gamma', 0.001, 10.0, log=True),
-            'reg_alpha': trial.suggest_float('reg_alpha', 0.001, 10.0, log=True),
-            'reg_lambda': trial.suggest_float('reg_lambda', 0.001, 10.0, log=True),
-            'random_state': 42,
-            'verbosity': 0
-        }
-        
-        # DMatrix 생성
-        dtrain = xgb.DMatrix(X_train, label=y_train)
-        dval = xgb.DMatrix(X_val, label=y_val)
-        
-        # 모델 학습
-        model = xgb.train(
-            params,
-            dtrain,
-            num_boost_round=1000,
-            evals=[(dval, 'eval')],
-            early_stopping_rounds=50,
-            verbose_eval=False
-        )
-        
-        # 검증 데이터로 예측 및 평가
-        y_pred_proba = model.predict(dval)
-        roc_auc = roc_auc_score(y_val, y_pred_proba)
-        
-        return roc_auc
+def optimize_xgboost_hyperparameters(X_train, y_train, cv=5):
+    """단계별 그리드 탐색을 사용한 XGBoost 하이퍼파라미터 최적화"""
+    print("\n[하이퍼파라미터 튜닝 시작]")
+    print(f"  방법: 단계별 그리드 탐색 (cv={cv})")
     
-    print(f"\n하이퍼파라미터 최적화 시작 (n_trials={n_trials})...")
-    study = optuna.create_study(direction='maximize', study_name='xgboost_optimization')
-    study.optimize(objective, n_trials=n_trials, show_progress_bar=True)
+    # MLflow 실험 시작
+    mlflow.set_experiment("XGBoost_Hyperparameter_Tuning")
     
-    print(f"\n최적화 완료!")
-    print(f"Best ROC-AUC: {study.best_value:.4f}")
-    print(f"\n최적 하이퍼파라미터:")
-    for key, value in study.best_params.items():
+    # 기본 파라미터 (단계별로 업데이트됨)
+    best_params = {
+        'objective': 'binary:logistic',
+        'eval_metric': 'logloss',
+        'booster': 'gbtree',
+        'random_state': 42,
+        'verbosity': 0,
+        'n_estimators': 1000
+    }
+    
+    # 단계 1: 트리 구조 파라미터 탐색
+    print("\n[단계 1/4] 트리 구조 파라미터 탐색 (max_depth, min_child_weight)")
+    step1_grid = {
+        'max_depth': [5, 7, 10],
+        'min_child_weight': [1, 3, 5]
+    }
+    
+    best_score = -np.inf
+    step1_params = {}
+    param_list = list(ParameterGrid(step1_grid))
+    
+    with mlflow.start_run(nested=True, run_name="Step1_Tree_Structure"):
+        for idx, params in enumerate(tqdm(param_list, desc="트리 구조 탐색", unit="조합")):
+            model = XGBClassifier(**best_params, **params)
+            scores = cross_val_score(model, X_train, y_train, cv=cv, scoring='roc_auc', n_jobs=-1)
+            mean_score = scores.mean()
+            
+            # 각 조합마다 별도의 child run 생성
+            with mlflow.start_run(nested=True, run_name=f"Step1_Combination_{idx+1}"):
+                mlflow.log_params(params)
+                mlflow.log_metric("cv_roc_auc", mean_score)
+            
+            if mean_score > best_score:
+                best_score = mean_score
+                step1_params = params
+        
+        mlflow.log_metric("best_cv_roc_auc", best_score)
+        mlflow.log_params(step1_params)
+        print(f"  최적 트리 구조: {step1_params}, CV ROC-AUC: {best_score:.4f}")
+    
+    best_params.update(step1_params)
+    
+    # 단계 2: 학습률 탐색
+    print("\n[단계 2/4] 학습률 탐색")
+    step2_grid = {'learning_rate': [0.01, 0.05, 0.1]}
+    
+    best_score = -np.inf
+    step2_params = {}
+    param_list = list(ParameterGrid(step2_grid))
+    
+    with mlflow.start_run(nested=True, run_name="Step2_Learning_Rate"):
+        for idx, params in enumerate(tqdm(param_list, desc="학습률 탐색", unit="조합")):
+            model = XGBClassifier(**best_params, **params)
+            scores = cross_val_score(model, X_train, y_train, cv=cv, scoring='roc_auc', n_jobs=-1)
+            mean_score = scores.mean()
+            
+            # 각 조합마다 별도의 child run 생성
+            with mlflow.start_run(nested=True, run_name=f"Step2_Combination_{idx+1}"):
+                mlflow.log_params(params)
+                mlflow.log_metric("cv_roc_auc", mean_score)
+            
+            if mean_score > best_score:
+                best_score = mean_score
+                step2_params = params
+        
+        mlflow.log_metric("best_cv_roc_auc", best_score)
+        mlflow.log_params(step2_params)
+        print(f"  최적 학습률: {step2_params}, CV ROC-AUC: {best_score:.4f}")
+    
+    best_params.update(step2_params)
+    
+    # 단계 3: 정규화 파라미터 탐색
+    print("\n[단계 3/4] 정규화 파라미터 탐색 (reg_alpha, reg_lambda, gamma)")
+    step3_grid = {
+        'reg_alpha': [0.1, 0.5, 1.0],
+        'reg_lambda': [0.1, 0.5, 1.0],
+        'gamma': [0, 0.1, 0.5]
+    }
+    
+    best_score = -np.inf
+    step3_params = {}
+    param_list = list(ParameterGrid(step3_grid))
+    
+    with mlflow.start_run(nested=True, run_name="Step3_Regularization"):
+        for idx, params in enumerate(tqdm(param_list, desc="정규화 탐색", unit="조합")):
+            model = XGBClassifier(**best_params, **params)
+            scores = cross_val_score(model, X_train, y_train, cv=cv, scoring='roc_auc', n_jobs=-1)
+            mean_score = scores.mean()
+            
+            # 각 조합마다 별도의 child run 생성
+            with mlflow.start_run(nested=True, run_name=f"Step3_Combination_{idx+1}"):
+                mlflow.log_params(params)
+                mlflow.log_metric("cv_roc_auc", mean_score)
+            
+            if mean_score > best_score:
+                best_score = mean_score
+                step3_params = params
+        
+        mlflow.log_metric("best_cv_roc_auc", best_score)
+        mlflow.log_params(step3_params)
+        print(f"  최적 정규화: {step3_params}, CV ROC-AUC: {best_score:.4f}")
+    
+    best_params.update(step3_params)
+    
+    # 단계 4: 샘플링 파라미터 탐색
+    print("\n[단계 4/4] 샘플링 파라미터 탐색 (subsample, colsample_bytree)")
+    step4_grid = {
+        'subsample': [0.7, 0.8, 0.9],
+        'colsample_bytree': [0.7, 0.8, 0.9]
+    }
+    
+    best_score = -np.inf
+    step4_params = {}
+    param_list = list(ParameterGrid(step4_grid))
+    
+    with mlflow.start_run(nested=True, run_name="Step4_Sampling"):
+        for idx, params in enumerate(tqdm(param_list, desc="샘플링 탐색", unit="조합")):
+            model = XGBClassifier(**best_params, **params)
+            scores = cross_val_score(model, X_train, y_train, cv=cv, scoring='roc_auc', n_jobs=-1)
+            mean_score = scores.mean()
+            
+            # 각 조합마다 별도의 child run 생성
+            with mlflow.start_run(nested=True, run_name=f"Step4_Combination_{idx+1}"):
+                mlflow.log_params(params)
+                mlflow.log_metric("cv_roc_auc", mean_score)
+            
+            if mean_score > best_score:
+                best_score = mean_score
+                step4_params = params
+        
+        mlflow.log_metric("best_cv_roc_auc", best_score)
+        mlflow.log_params(step4_params)
+        print(f"  최적 샘플링: {step4_params}, CV ROC-AUC: {best_score:.4f}")
+    
+    best_params.update(step4_params)
+    
+    # 최종 결과 출력 및 MLflow 로깅
+    print(f"\n[최종 결과] 최적 하이퍼파라미터:")
+    final_params = {k: v for k, v in best_params.items() if k not in ['objective', 'eval_metric', 'booster', 'random_state', 'verbosity', 'n_estimators']}
+    for key, value in final_params.items():
         print(f"  {key}: {value}")
+    print(f"\n최종 CV 점수 (ROC-AUC): {best_score:.4f}")
     
-    return study.best_params
+    # MLflow에 최종 파라미터 로깅
+    mlflow.log_params(final_params)
+    mlflow.log_metric("final_cv_roc_auc", best_score)
+    
+    return final_params
 
 
-def train_xgboost(X_train, y_train, X_val, y_val, use_tuning=True, n_trials=50):
+def train_xgboost(X_train, y_train, X_val, y_val, use_tuning=True, cv=5):
     """XGBoost 모델 학습 (이진 분류)"""
     # 하이퍼파라미터 튜닝
     if use_tuning:
-        best_params = optimize_xgboost_hyperparameters(X_train, y_train, X_val, y_val, n_trials)
-        # 기본 파라미터와 최적 파라미터 병합
+        # 학습+검증 데이터를 합쳐서 GridSearchCV에 사용
+        if isinstance(X_train, pd.DataFrame):
+            X_train_val = pd.concat([X_train, X_val], ignore_index=True)
+        else:
+            X_train_val = pd.concat([pd.DataFrame(X_train), pd.DataFrame(X_val)], ignore_index=True)
+        if isinstance(y_train, pd.Series):
+            y_train_val = pd.concat([y_train, y_val], ignore_index=True)
+        else:
+            y_train_val = pd.concat([pd.Series(y_train), pd.Series(y_val)], ignore_index=True)
+        best_params = optimize_xgboost_hyperparameters(X_train_val, y_train_val, cv=cv)
+        
+        # 최적 파라미터로 모델 생성
         params = {
             'objective': 'binary:logistic',
             'eval_metric': 'logloss',
@@ -446,33 +565,64 @@ def main():
     print(f"Train (학습용): {len(X_train_split)}개")
     print(f"Validation: {len(X_val)}개")
     
-    # 5. 모델 학습
+    # 5. 모델 학습 (MLflow 실험 시작)
     print("\n[5단계] XGBoost 모델 학습")
-    model, best_params = train_xgboost(X_train_split, y_train_split, X_val, y_val, use_tuning=True, n_trials=50)
+    experiment_name = f"XGBoost_Growth_Prediction_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    mlflow.set_experiment(experiment_name)
     
-    # 최적 하이퍼파라미터 저장
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    params_path = os.path.join(script_dir, 'best_params.txt')
-    with open(params_path, 'w', encoding='utf-8') as f:
-        f.write("최적 하이퍼파라미터:\n")
-        for key, value in best_params.items():
-            f.write(f"{key}: {value}\n")
-    print(f"\n최적 하이퍼파라미터 저장: {params_path}")
-    
-    # 6. 모델 평가 (임계값 0.4로 Recall 향상)
-    print("\n[6단계] 모델 평가")
-    print("  임계값(Threshold): 0.4 (Recall 향상을 위해 0.5에서 조정)")
-    y_train_pred, y_train_pred_proba, train_metrics = evaluate_model(model, X_train_split, y_train_split, 'Train', threshold=0.4)
-    y_val_pred, y_val_pred_proba, val_metrics = evaluate_model(model, X_val, y_val, 'Validation', threshold=0.4)
-    
-    # Test 데이터가 있는 경우에만 평가
-    if len(X_test) > 0:
-        y_test_pred, y_test_pred_proba, test_metrics = evaluate_model(model, X_test, y_test, 'Test', threshold=0.4)
-    else:
-        print("\nTest 데이터가 없어 Test 평가를 건너뜁니다.")
-        test_metrics = None
-        y_test_pred = None
-        y_test_pred_proba = None
+    with mlflow.start_run(run_name=f"XGBoost_Run_{datetime.now().strftime('%H%M%S')}"):
+        model, best_params = train_xgboost(X_train_split, y_train_split, X_val, y_val, use_tuning=True, cv=5)
+        
+        # MLflow에 모델 및 파라미터 로깅
+        mlflow.log_params(best_params)
+        mlflow.log_param("threshold", 0.4)
+        mlflow.log_param("cv_folds", 5)
+        mlflow.log_param("n_estimators", 1000)
+        
+        # 최적 하이퍼파라미터 저장
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        params_path = os.path.join(script_dir, 'best_params.txt')
+        with open(params_path, 'w', encoding='utf-8') as f:
+            f.write("최적 하이퍼파라미터:\n")
+            for key, value in best_params.items():
+                f.write(f"{key}: {value}\n")
+        print(f"\n최적 하이퍼파라미터 저장: {params_path}")
+        
+        # 6. 모델 평가 (임계값 0.4로 Recall 향상)
+        print("\n[6단계] 모델 평가")
+        print("  임계값(Threshold): 0.4 (Recall 향상을 위해 0.5에서 조정)")
+        y_train_pred, y_train_pred_proba, train_metrics = evaluate_model(model, X_train_split, y_train_split, 'Train', threshold=0.4)
+        y_val_pred, y_val_pred_proba, val_metrics = evaluate_model(model, X_val, y_val, 'Validation', threshold=0.4)
+        
+        # MLflow에 평가 지표 로깅
+        mlflow.log_metrics({
+            "train_accuracy": train_metrics['accuracy'],
+            "train_precision": train_metrics['precision'],
+            "train_recall": train_metrics['recall'],
+            "train_f1": train_metrics['f1'],
+            "train_roc_auc": train_metrics['roc_auc'],
+            "val_accuracy": val_metrics['accuracy'],
+            "val_precision": val_metrics['precision'],
+            "val_recall": val_metrics['recall'],
+            "val_f1": val_metrics['f1'],
+            "val_roc_auc": val_metrics['roc_auc']
+        })
+        
+        # Test 데이터가 있는 경우에만 평가
+        if len(X_test) > 0:
+            y_test_pred, y_test_pred_proba, test_metrics = evaluate_model(model, X_test, y_test, 'Test', threshold=0.4)
+            mlflow.log_metrics({
+                "test_accuracy": test_metrics['accuracy'],
+                "test_precision": test_metrics['precision'],
+                "test_recall": test_metrics['recall'],
+                "test_f1": test_metrics['f1'],
+                "test_roc_auc": test_metrics['roc_auc']
+            })
+        else:
+            print("\nTest 데이터가 없어 Test 평가를 건너뜁니다.")
+            test_metrics = None
+            y_test_pred = None
+            y_test_pred_proba = None
     
     # 7. 피처 중요도 시각화
     print("\n[7단계] 피처 중요도 분석")
