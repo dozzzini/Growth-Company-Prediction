@@ -1,0 +1,16 @@
+최적 하이퍼파라미터:
+objective: binary
+metric: binary_logloss
+boosting_type: gbdt
+verbose: -1
+random_state: 42
+num_leaves: 20
+learning_rate: 0.032603000199485706
+feature_fraction: 0.627890129409345
+bagging_fraction: 0.5890149682446747
+bagging_freq: 4
+min_child_samples: 44
+min_child_weight: 0.3947380873689805
+reg_alpha: 2.8014147497956037
+reg_lambda: 0.1721009704574897
+max_depth: 8

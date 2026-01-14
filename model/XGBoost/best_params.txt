@@ -1,0 +1,14 @@
+최적 하이퍼파라미터:
+objective: binary:logistic
+eval_metric: logloss
+booster: gbtree
+random_state: 42
+verbosity: 0
+max_depth: 8
+learning_rate: 0.22182504505933337
+subsample: 0.8202149534615069
+colsample_bytree: 0.6275548575560109
+min_child_weight: 0.212874952228991
+gamma: 0.268984356346441
+reg_alpha: 0.022330814278156287
+reg_lambda: 1.259705140518893
