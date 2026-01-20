@@ -1,0 +1,30 @@
+최적 하이퍼파라미터(Random Search) — 재무
+
+Objective score = 0.583043
+Tuning Rolling Years = [2022]
+EarlyStop 기준 = objective(multi-metric)
+
+[Best Tuning Metrics]
+- pr_auc: 0.413705
+- top20_precision: 0.750000
+- top50_precision: 0.560000
+- f1_fixed: 0.000000
+- f1_best: 0.464580
+- best_threshold: 0.050000
+- brier: 0.243991
+
+[Best MODEL_PARAMS]
+- hidden_dim: 64
+- layer_dim: 3
+- dropout_prob: 0.2
+- bidirectional: False
+
+[Best TRAIN_PARAMS]
+- max_epochs: 70
+- patience: 12
+- lr: 0.0004686966556408834
+- weight_decay: 2.393823519426182e-06
+- batch_size: 64
+- use_sampler: True
+- pos_weight_mult: 2.0
+- grad_clip: 2.0

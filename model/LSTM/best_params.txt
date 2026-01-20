@@ -1,0 +1,26 @@
+최적 하이퍼파라미터(Random Search)
+Objective score = 0.689000
+EarlyStop 기준 = objective(Top20/Top50)
+
+[Best Rolling Metrics]
+- pr_auc: 0.449683
+- top20_precision: 0.750000
+- top50_precision: 0.546667
+- f1: 0.451063
+- brier: 0.378909
+
+[Best MODEL_PARAMS]
+- hidden_dim: 384
+- layer_dim: 1
+- dropout_prob: 0.3
+- bidirectional: False
+
+[Best TRAIN_PARAMS]
+- max_epochs: 80
+- patience: 8
+- lr: 0.00026943939964602944
+- weight_decay: 4.828424974818329e-06
+- batch_size: 64
+- use_sampler: True
+- pos_weight_mult: 2.0
+- grad_clip: 2.0

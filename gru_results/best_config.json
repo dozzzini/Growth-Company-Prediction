@@ -1,0 +1,36 @@
+{
+  "best_trial": 1,
+  "best_score": 0.6120671176410871,
+  "best_val_auc": 0.6833421032849734,
+  "best_val_f1": 0.5051546391752577,
+  "threshold_from_val": 0.49,
+  "threshold_info": {
+    "th": 0.49,
+    "f1": 0.47393364928909953,
+    "prec": 0.47619047619047616,
+    "rec": 0.4716981132075472,
+    "pos_rate": 0.29411764705882354
+  },
+  "config": {
+    "hidden_dim": 64,
+    "layer_dim": 1,
+    "dropout_prob": 0.4,
+    "bidirectional": false,
+    "lr": 0.00015741083706895975,
+    "weight_decay": 5.269493339314529e-06,
+    "batch_size": 64,
+    "patience": 40,
+    "max_epochs": 250,
+    "loss_type": "bce",
+    "focal_gamma": 3.0,
+    "focal_alpha": 1.0,
+    "use_sampler": false,
+    "pos_weight_mult": 0.8060660735853531
+  },
+  "max_pos_rate": 0.35,
+  "score_weights": [
+    0.6,
+    0.4
+  ],
+  "base_pos_weight": 2.3735224586288415
+}

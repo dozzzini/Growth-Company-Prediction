@@ -29,7 +29,6 @@ def load_data():
     # 원본 재무정보 데이터 로드 (타겟 변수 생성용)
     financial_path = os.path.join(project_root, 'data', '재무정보_final_imputed.csv')
     financial_df = pd.read_csv(financial_path, encoding='cp949')
-    
     return features_df, financial_df
 
 

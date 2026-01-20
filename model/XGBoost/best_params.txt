@@ -11,4 +11,4 @@ gamma: 0.5
 reg_alpha: 0.1
 reg_lambda: 0.5
 colsample_bytree: 0.8
-subsample: 0.9
+subsample: 0.8
