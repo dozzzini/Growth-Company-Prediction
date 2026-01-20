@@ -82,3 +82,16 @@ preprocessed_data/*
 !preprocessed_data/.gitkeep
 *.log
 *.tmp
+
+# MLflow
+**/mlruns/
+**/mlflow.db
+*.db
+
+# Outputs
+output/
+
+# Large files
+*.csv
+*.pkl
+*.db
