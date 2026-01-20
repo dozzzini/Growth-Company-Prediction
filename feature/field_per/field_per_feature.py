@@ -7,13 +7,13 @@ from typing import Optional
 def calculate_growth_features(df: pd.DataFrame, 
                              company_col: str = '기업명',
                              year_col: str = '연도',
-                             revenue_col: str = '  매출액  ',
-                             operating_profit_col: str = '  영업이익  ',
-                             capex_col: str = '  CAPEX  ',
-                             fixed_asset_change_col: str = '  유형자산_증감  ',
-                             debt_col: str = '  부채총계  ',
-                             equity_col: str = '  자본총계  ',
-                             rnd_col: str = '  연구개발비  ',
+                             revenue_col: str = '매출액',
+                             operating_profit_col: str = '영업이익',
+                             capex_col: str = 'CAPEX',
+                             fixed_asset_change_col: str = '유형자산_증감',
+                             debt_col: str = '부채총계',
+                             equity_col: str = '자본총계',
+                             rnd_col: str = '연구개발비',
                              field_col: str = 'field',
                              feature_year: Optional[int] = None) -> pd.DataFrame:
     """
@@ -139,19 +139,19 @@ def calculate_growth_features(df: pd.DataFrame,
         feature_year = df_processed[year_col].max()
     
     # 업종별 CAPEX 평균 계산 (같은 연도, 같은 field의 평균)
-    # feature_year 기준으로 업종 평균 계산
+    # feature_year (해당 연도) 기준으로 업종 평균 계산
     industry_capex_avg = {}
     if field_col in df_processed.columns and capex_col in df_processed.columns:
-        t_minus_1_year = feature_year
-        t_minus_1_data = df_processed[df_processed[year_col] == t_minus_1_year].copy()
+        current_year = feature_year  # 해당 연도 기준
+        current_year_data = df_processed[df_processed[year_col] == current_year].copy()
         
-        if not t_minus_1_data.empty:
+        if not current_year_data.empty:
             # field별, 연도별 CAPEX 평균 계산
-            for field_val in t_minus_1_data[field_col].unique():
+            for field_val in current_year_data[field_col].unique():
                 if pd.notna(field_val):
-                    field_data = t_minus_1_data[
-                        (t_minus_1_data[field_col] == field_val) & 
-                        (t_minus_1_data[capex_col].notna())
+                    field_data = current_year_data[
+                        (current_year_data[field_col] == field_val) & 
+                        (current_year_data[capex_col].notna())
                     ]
                     if len(field_data) > 0:
                         avg_capex = field_data[capex_col].mean()
@@ -173,9 +173,14 @@ def calculate_growth_features(df: pd.DataFrame,
         
         # t-1, t-2, t-3년 데이터 추출 (feature_year 기준)
         # 예: 2019년 말 피처 → 2018년(t-1), 2017년(t-2), 2016년(t-3) 데이터 사용
-        t_minus_1 = company_data_target[company_data_target[year_col] == feature_year]
-        t_minus_2 = company_data_target[company_data_target[year_col] == feature_year - 1]
-        t_minus_3 = company_data_target[company_data_target[year_col] == feature_year - 2]
+        # 재무정보는 전년도 것을 반영해야 하므로 t-1 = feature_year - 1
+        t_minus_1 = company_data_target[company_data_target[year_col] == feature_year - 1]
+        t_minus_2 = company_data_target[company_data_target[year_col] == feature_year - 2]
+        t_minus_3 = company_data_target[company_data_target[year_col] == feature_year - 3]
+        
+        # feature_year (해당 연도) 데이터 추출
+        # capex_intensity, operating_margin, debt_ratio, rnd_intensity 등은 해당 연도 데이터 사용
+        t_current = company_data_target[company_data_target[year_col] == feature_year]
         
         # 피처 초기화 (연도는 feature_year로 저장)
         feature_dict = {
@@ -260,12 +265,13 @@ def calculate_growth_features(df: pd.DataFrame,
         feature_dict['profitable_years'] = profitable_count
         
         # 7. capex_intensity: CAPEX / 매출액 (당해 투자 강도)
-        if (not t_minus_1.empty and 
-            pd.notna(t_minus_1[revenue_col].iloc[0]) and 
-            pd.notna(t_minus_1[capex_col].iloc[0]) and
-            t_minus_1[revenue_col].iloc[0] > 0):
-            capex = t_minus_1[capex_col].iloc[0]
-            revenue = t_minus_1[revenue_col].iloc[0]
+        # feature_year (해당 연도) 데이터 사용
+        if (not t_current.empty and 
+            pd.notna(t_current[revenue_col].iloc[0]) and 
+            pd.notna(t_current[capex_col].iloc[0]) and
+            t_current[revenue_col].iloc[0] > 0):
+            capex = t_current[capex_col].iloc[0]
+            revenue = t_current[revenue_col].iloc[0]
             feature_dict['capex_intensity'] = capex / revenue
         else:
             feature_dict['capex_intensity'] = np.nan
@@ -282,11 +288,12 @@ def calculate_growth_features(df: pd.DataFrame,
             feature_dict['capex_trend'] = np.nan
         
         # 9. capex_vs_industry: 기업 CAPEX - 업종 평균 (업종 대비 수준)
-        if (not t_minus_1.empty and 
-            pd.notna(t_minus_1[capex_col].iloc[0])):
-            company_capex = t_minus_1[capex_col].iloc[0]
+        # feature_year (해당 연도) 데이터 사용
+        if (not t_current.empty and 
+            pd.notna(t_current[capex_col].iloc[0])):
+            company_capex = t_current[capex_col].iloc[0]
             # 기업의 field 값 가져오기
-            company_field = t_minus_1[field_col].iloc[0] if field_col in t_minus_1.columns else None
+            company_field = t_current[field_col].iloc[0] if field_col in t_current.columns else None
             
             if company_field in industry_capex_avg:
                 industry_avg = industry_capex_avg[company_field]
@@ -297,34 +304,37 @@ def calculate_growth_features(df: pd.DataFrame,
             feature_dict['capex_vs_industry'] = np.nan
         
         # 10. operating_margin: 영업이익 / 매출액 (영업이익률)
-        if (not t_minus_1.empty and
-            pd.notna(t_minus_1[revenue_col].iloc[0]) and
-            pd.notna(t_minus_1[operating_profit_col].iloc[0]) and
-            t_minus_1[revenue_col].iloc[0] > 0):
-            operating_profit = t_minus_1[operating_profit_col].iloc[0]
-            revenue = t_minus_1[revenue_col].iloc[0]
+        # feature_year (해당 연도) 데이터 사용
+        if (not t_current.empty and
+            pd.notna(t_current[revenue_col].iloc[0]) and
+            pd.notna(t_current[operating_profit_col].iloc[0]) and
+            t_current[revenue_col].iloc[0] > 0):
+            operating_profit = t_current[operating_profit_col].iloc[0]
+            revenue = t_current[revenue_col].iloc[0]
             feature_dict['operating_margin'] = operating_profit / revenue
         else:
             feature_dict['operating_margin'] = np.nan
         
         # 11. debt_ratio: 부채총계 / 자본총계 (부채비율)
-        if (not t_minus_1.empty and
-            pd.notna(t_minus_1[debt_col].iloc[0]) and
-            pd.notna(t_minus_1[equity_col].iloc[0]) and
-            t_minus_1[equity_col].iloc[0] > 0):
-            debt = t_minus_1[debt_col].iloc[0]
-            equity = t_minus_1[equity_col].iloc[0]
+        # feature_year (해당 연도) 데이터 사용
+        if (not t_current.empty and
+            pd.notna(t_current[debt_col].iloc[0]) and
+            pd.notna(t_current[equity_col].iloc[0]) and
+            t_current[equity_col].iloc[0] > 0):
+            debt = t_current[debt_col].iloc[0]
+            equity = t_current[equity_col].iloc[0]
             feature_dict['debt_ratio'] = debt / equity
         else:
             feature_dict['debt_ratio'] = np.nan
         
         # 12. rnd_intensity: 연구개발비 / 매출액 (R&D 집중도)
-        if (not t_minus_1.empty and
-            pd.notna(t_minus_1[revenue_col].iloc[0]) and
-            pd.notna(t_minus_1[rnd_col].iloc[0]) and
-            t_minus_1[revenue_col].iloc[0] > 0):
-            rnd = t_minus_1[rnd_col].iloc[0]
-            revenue = t_minus_1[revenue_col].iloc[0]
+        # feature_year (해당 연도) 데이터 사용
+        if (not t_current.empty and
+            pd.notna(t_current[revenue_col].iloc[0]) and
+            pd.notna(t_current[rnd_col].iloc[0]) and
+            t_current[revenue_col].iloc[0] > 0):
+            rnd = t_current[rnd_col].iloc[0]
+            revenue = t_current[revenue_col].iloc[0]
             feature_dict['rnd_intensity'] = rnd / revenue
         else:
             feature_dict['rnd_intensity'] = np.nan
@@ -349,10 +359,10 @@ def main():
     # 데이터 로드 - 스크립트 위치 기준으로 경로 설정
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(os.path.dirname(script_dir))
-    data_path = os.path.join(project_root, 'data', '전체기업_재무데이터_선형보간.csv')
+    data_path = os.path.join(project_root, 'data', '재무정보_final_imputed.csv')
     
-    # 여러 인코딩 시도
-    encodings = ['utf-8-sig', 'utf-8', 'cp949', 'euc-kr', 'latin1']
+    # 여러 인코딩 시도 (재무정보_final_imputed.csv는 cp949로 저장됨)
+    encodings = ['cp949', 'utf-8-sig', 'utf-8', 'euc-kr', 'latin1']
     df = None
     used_encoding = None
     
@@ -383,7 +393,7 @@ def main():
         print(f"  [{i}]: {repr(col)}")
     
     # 컬럼 인덱스로 직접 지정 (인코딩 문제 대비)
-    # 일반적인 구조: 0=기업명, 5=field, 6=연도, 7=매출액, 8=영업이익, 11=부채총계, 12=자본총계, 13=연구개발비, 14=CAPEX, 17=유형자산_증감
+    # 재무정보_final_imputed.csv 구조: 0=기업명, 1=사업자등록번호, 2=crno, 3=dart_corp_code, 4=sectors, 5=field, 6=연도, 7=매출액, 8=영업이익, 9=당기순이익, 10=자산총계, 11=부채총계, 12=자본총계, 13=연구개발비, 14=CAPEX, 15=유형자산_당기, 16=유형자산_전기, 17=유형자산_증감
     if len(df.columns) >= 18:
         company_col = df.columns[0]
         field_col = df.columns[5]
@@ -463,7 +473,7 @@ def main():
     # 결과 저장 - 스크립트 위치 기준으로 경로 설정
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(os.path.dirname(script_dir))
-    output_path = os.path.join(project_root, 'data', 'growth_features_rolling_주원.csv')
+    output_path = os.path.join(project_root, 'data', 'growth_features_rolling.csv')
     final_features_df.to_csv(output_path, index=False, encoding='utf-8-sig')
     
     print(f"\n{'='*60}")

@@ -4,11 +4,11 @@ eval_metric: logloss
 booster: gbtree
 random_state: 42
 verbosity: 0
-max_depth: 10
-min_child_weight: 1
+max_depth: 3
+min_child_weight: 10
 learning_rate: 0.01
-gamma: 0.5
-reg_alpha: 0.1
-reg_lambda: 0.5
+gamma: 1.0
+reg_alpha: 2.0
+reg_lambda: 2.0
 colsample_bytree: 0.8
-subsample: 0.9
+subsample: 0.8
