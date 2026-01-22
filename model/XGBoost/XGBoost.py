@@ -586,7 +586,7 @@ def calculate_top_k_precision(y_true, y_pred_proba, k=20):
     return top_k_precision
 
 
-def evaluate_model(model, X, y, split_name='', threshold=0.4, company_names=None):
+def evaluate_model(model, X, y, split_name='', threshold=0.3, company_names=None):
     """
     모델 평가 (이진 분류) - 새로운 지표 포함
     - PR-AUC (Precision-Recall AUC)
@@ -951,7 +951,7 @@ def save_performance_report(train_metrics, val_metrics, test_metrics, best_param
         f.write("|---------|-----|\n")
         for key, value in best_params.items():
             f.write(f"| {key} | {value} |\n")
-        f.write(f"| threshold | 0.4 |\n")
+        f.write(f"| threshold | 0.3 |\n")
         f.write(f"| cv_folds | 5 |\n")
         f.write(f"| n_estimators | 1000 |\n")
         f.write("\n---\n\n")
@@ -1056,7 +1056,7 @@ def plot_predictions(y_true, y_pred, y_pred_proba, split_name=''):
     # 3. 예측 확률 분포
     axes[1, 0].hist(y_pred_proba[y_true == 0], bins=30, alpha=0.5, label='Class 0 (하위 70%)', color='blue')
     axes[1, 0].hist(y_pred_proba[y_true == 1], bins=30, alpha=0.5, label='Class 1 (상위 30%)', color='red')
-    axes[1, 0].axvline(x=0.4, color='green', linestyle='--', label='Threshold (0.4)')
+    axes[1, 0].axvline(x=0.3, color='green', linestyle='--', label='Threshold (0.3)')
     axes[1, 0].set_xlabel('Predicted Probability')
     axes[1, 0].set_ylabel('Frequency')
     axes[1, 0].set_title(f'{split_name} - Probability Distribution (XGBoost)')
@@ -1170,7 +1170,7 @@ def main():
         
         # MLflow에 모델 및 파라미터 로깅
         mlflow.log_params(best_params)
-        mlflow.log_param("threshold", 0.4)
+        mlflow.log_param("threshold", 0.3)
         mlflow.log_param("cv_folds", 5)
         mlflow.log_param("n_estimators", 1000)
         
@@ -1185,9 +1185,9 @@ def main():
         
         # 6. 모델 평가 (임계값 0.4로 Recall 향상)
         print("\n[6단계] 모델 평가")
-        print("  임계값(Threshold): 0.4 (Recall 향상을 위해 0.5에서 조정)")
-        y_train_pred, y_train_pred_proba, train_metrics = evaluate_model(model, X_train_split, y_train_split, 'Train', threshold=0.4)
-        y_val_pred, y_val_pred_proba, val_metrics = evaluate_model(model, X_val, y_val, 'Validation', threshold=0.4)
+        print("  임계값(Threshold): 0.3 (Recall 향상을 위해 추가 조정)")
+        y_train_pred, y_train_pred_proba, train_metrics = evaluate_model(model, X_train_split, y_train_split, 'Train', threshold=0.3)
+        y_val_pred, y_val_pred_proba, val_metrics = evaluate_model(model, X_val, y_val, 'Validation', threshold=0.3)
         
         # MLflow에 평가 지표 로깅
         mlflow.log_metrics({
@@ -1229,10 +1229,55 @@ def main():
     
     # test_dataset_patent_feature_add.csv 로드
     if use_train_dataset:
-        print("\n[최종 테스트] test_dataset_patent_feature_add.csv 사용 (2023년 피처 → 2024년 타겟)")
+        print("\n[최종 테스트] test_dataset_patent_feature_add.csv 사용")
         test_df = load_test_dataset(project_root)
         
-        if len(test_df) > 0 and 'target_growth' in test_df.columns:
+        # test가 비어있으면 train의 마지막 연도(2024)를 holdout으로 사용
+        if len(test_df) == 0 or 'target_growth' not in test_df.columns:
+            print("  → test_dataset.csv가 비어있음")
+            print("  → train의 마지막 연도(2024년 타겟)를 최종 holdout으로 사용")
+            
+            # train에서 2024년 타겟 데이터만 추출
+            holdout_mask = features_df_filtered['target_year'] == 2024
+            X_holdout = X[holdout_mask]
+            y_holdout = y[holdout_mask]
+            
+            if len(X_holdout) > 0:
+                # 예측 수행
+                dtest = xgb.DMatrix(X_holdout)
+                y_test_pred_proba = model.predict(dtest)
+                y_test_pred = (y_test_pred_proba >= 0.4).astype(int)
+                y_test_actual = y_holdout.values
+                y_test_actual_series = pd.Series(y_test_actual)
+                
+                # 모든 지표로 평가
+                holdout_results = {
+                    'pr_auc': average_precision_score(y_test_actual, y_test_pred_proba) if len(np.unique(y_test_actual)) > 1 else 0.0,
+                    'top20_precision': calculate_top_k_precision(y_test_actual_series, y_test_pred_proba, k=20),
+                    'top50_precision': calculate_top_k_precision(y_test_actual_series, y_test_pred_proba, k=50),
+                    'f1': f1_score(y_test_actual, y_test_pred, zero_division=0),
+                    'brier': brier_score_loss(y_test_actual, y_test_pred_proba),
+                    'roc_auc': roc_auc_score(y_test_actual, y_test_pred_proba) if len(np.unique(y_test_actual)) > 1 else 0.0
+                }
+                
+                print(f"  PR-AUC: {holdout_results['pr_auc']:.4f}")
+                print(f"  Top-20 Precision: {holdout_results['top20_precision']:.4f}")
+                print(f"  Top-50 Precision: {holdout_results['top50_precision']:.4f}")
+                print(f"  F1-Score: {holdout_results['f1']:.4f}")
+                print(f"  Brier Score: {holdout_results['brier']:.4f}")
+                print(f"  ROC-AUC: {holdout_results['roc_auc']:.4f}")
+                
+                # 결과 저장
+                holdout_df = features_df_filtered[holdout_mask][['기업명', '연도']].copy()
+                holdout_df['predicted_top30'] = y_test_pred
+                holdout_df['predicted_probability'] = y_test_pred_proba
+                holdout_df['actual_top30'] = y_test_actual
+                
+                test_output_path = os.path.join(script_dir, 'test_predictions_2024.csv')
+                holdout_df.to_csv(test_output_path, index=False, encoding='utf-8-sig')
+                print(f"  예측 결과 저장: {test_output_path}")
+        
+        elif len(test_df) > 0 and 'target_growth' in test_df.columns:
             # test_df에서 target_growth를 target_top30으로 변환
             test_df['target_top30'] = test_df['target_growth']
             
@@ -1274,8 +1319,6 @@ def main():
                 test_output_path = os.path.join(script_dir, 'test_predictions_2024.csv')
                 test_output_df.to_csv(test_output_path, index=False, encoding='utf-8-sig')
                 print(f"  예측 결과 저장: {test_output_path}")
-        else:
-            print("  경고: test_dataset_patent_feature_add.csv를 로드할 수 없거나 target_growth 컬럼이 없습니다.")
     else:
         # 기존 방식: 2023년 피처로 2024년 타겟 예측
         if len(X_test_2024) > 0:

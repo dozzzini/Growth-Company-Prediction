@@ -82,3 +82,11 @@ preprocessed_data/*
 !preprocessed_data/.gitkeep
 *.log
 *.tmp
+
+
+# ================================
+# GenAI
+# ================================
+genai/chroma_db/*
+*.sqlite3
+*.bin

@@ -1,0 +1,8 @@
+최적 하이퍼파라미터:
+max_depth: 6
+min_samples_split: 5
+min_samples_leaf: 5
+max_features: sqrt
+bootstrap: True
+max_samples: 0.8
+class_weight: balanced
