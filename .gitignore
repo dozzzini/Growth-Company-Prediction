@@ -80,6 +80,7 @@ data/*
 !data/.gitkeep
 preprocessed_data/*
 !preprocessed_data/.gitkeep
+industry_news/news_data/*.xlsx
 *.log
 *.tmp
 
